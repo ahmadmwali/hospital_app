@@ -3,19 +3,16 @@ import pandas as pd
 from datetime import datetime
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text
 from sqlalchemy.orm import declarative_base, sessionmaker
-import matplotlib.pyplot as plt
+import plotly.express as px
 
 # ==========================================
 # 1. CLOUD DATABASE CONFIGURATION (SECURE)
 # ==========================================
-# Pulling connection string dynamically from Streamlit secure secrets env
 if "DATABASE_URL" in st.secrets:
     DATABASE_URL = st.secrets["DATABASE_URL"]
 else:
-    # Fallback to local testing only if cloud secret isn't configured yet
     DATABASE_URL = "sqlite:///clinic_operations.db"
 
-# Added pool_pre_ping to automatically reconnect across unstable network drops
 engine = create_engine(
     DATABASE_URL, 
     pool_pre_ping=True,
@@ -41,15 +38,18 @@ class PatientVisit(Base):
     
     # Clinical Classifications
     primary_diagnosis = Column(String(100), nullable=False)
-    is_admission = Column(String(50), default="No Entry")  # No Entry, Short-Day, Standard Admission
-    is_referral = Column(Integer, default=0) # 0 = No, 1 = Yes
+    is_admission = Column(String(50), default="No Entry") 
+    is_referral = Column(Integer, default=0) 
     
     # Incident Tracking
-    is_incident = Column(Integer, default=0) # 0 = No, 1 = Yes
-    incident_type = Column(String(50), nullable=True) # Minor, Major (LTI)
+    is_incident = Column(Integer, default=0) 
+    incident_type = Column(String(50), nullable=True) 
     clinical_notes = Column(Text, nullable=True)
+    
+    # NEW: Duration & Length of Stay Tracking
+    hours_in_clinic = Column(Float, nullable=True, default=0.0)
+    days_admitted = Column(Integer, nullable=True, default=0)
 
-# Generate tables if they do not already exist in the database
 Base.metadata.create_all(bind=engine)
 
 # ==========================================
@@ -62,7 +62,6 @@ def save_visit(data):
         db.add(db_visit)
         db.commit()
     finally:
-        # Ensures connection returns to the pool even if an error occurs
         db.close()
 
 def load_data_dataframe():
@@ -83,7 +82,6 @@ def load_data_dataframe():
             "Patient Name": item.patient_name,
             "Age": item.age,
             "Gender": item.gender,
-            "Blood Pressure": f"{item.systolic_bp}/{item.diastolic_bp}" if item.systolic_bp else "N/A",
             "Systolic": item.systolic_bp,
             "Diastolic": item.diastolic_bp,
             "Temp (°C)": item.temperature_c,
@@ -92,6 +90,8 @@ def load_data_dataframe():
             "Referral": "Yes" if item.is_referral == 1 else "No",
             "Incident Case": "Yes" if item.is_incident == 1 else "No",
             "Incident Type": item.incident_type if item.is_incident == 1 else "N/A",
+            "Hours in Clinic": item.hours_in_clinic,
+            "Days Admitted": item.days_admitted,
             "Notes": item.clinical_notes
         })
     return pd.DataFrame(data)
@@ -99,12 +99,11 @@ def load_data_dataframe():
 # ==========================================
 # 3. STREAMLIT INTERFACE (UI LAYER)
 # ==========================================
-st.set_page_config(page_title="Clinic Operations System", layout="wide")
+st.set_page_config(page_title="Clinic Operations System", layout="wide", page_icon="🏥")
 
 st.title("🏥 Site Clinic Intelligence System")
 st.markdown("---")
 
-# Navigation Tabs
 tab_dashboard, tab_entry = st.tabs(["📊 Real-Time Analytics Dashboard", "📝 Nurse Intake Registry"])
 
 # ------------------------------------------
@@ -133,38 +132,54 @@ with tab_dashboard:
         
         st.markdown("---")
         
-        # Visual Analytics Zone
+        # ROW 1: Diagnoses & Hypertension (Plotly)
         chart_col1, chart_col2 = st.columns(2)
         
         with chart_col1:
-            st.subheader("Leading Causes of Clinic Attendance")
-            diagnosis_counts = df["Diagnosis"].value_counts()
-            
-            fig, ax = plt.subplots(figsize=(8, 4.5))
-            diagnosis_counts.plot(kind="barh", ax=ax, color="#1f77b4", edgecolor="none")
-            ax.spines['top'].set_visible(False)
-            ax.spines['right'].set_visible(False)
-            ax.invert_yaxis()  # Top down representation
-            plt.tight_layout()
-            st.pyplot(fig)
+            dx_counts = df["Diagnosis"].value_counts().reset_index()
+            dx_counts.columns = ["Diagnosis", "Count"]
+            fig_dx = px.bar(dx_counts, x="Count", y="Diagnosis", orientation='h', 
+                            title="Leading Causes of Clinic Attendance",
+                            color="Count", color_continuous_scale="Blues")
+            fig_dx.update_layout(yaxis={'categoryorder':'total ascending'}, showlegend=False)
+            st.plotly_chart(fig_dx, use_container_width=True)
             
         with chart_col2:
-            st.subheader("Hypertension & Cardiovascular Monitoring")
-            # Filter rows with valid BP entries
-            valid_bp = df[df["Systolic"].notna()]
-            
+            valid_bp = df[df["Systolic"].notna()].copy()
             if not valid_bp.empty:
-                fig2, ax2 = plt.subplots(figsize=(8, 4.5))
-                colors = valid_bp["Systolic"].apply(lambda x: '#d62728' if x >= 140 else '#2ca02c')
-                ax2.scatter(valid_bp["Systolic"], valid_bp["Diastolic"], c=colors, s=100, alpha=0.7, edgecolors='none')
-                ax2.axvline(x=140, color='#d62728', linestyle='--', alpha=0.5, label='Hypertensive Threshold')
-                ax2.set_xlabel("Systolic Blood Pressure (mmHg)")
-                ax2.set_ylabel("Diastolic Blood Pressure (mmHg)")
-                ax2.spines['top'].set_visible(False)
-                ax2.spines['right'].set_visible(False)
-                st.pyplot(fig2)
+                valid_bp["Risk Level"] = valid_bp["Systolic"].apply(lambda x: "High Risk (≥140)" if x >= 140 else "Normal")
+                fig_bp = px.scatter(valid_bp, x="Systolic", y="Diastolic", color="Risk Level",
+                                    color_discrete_map={"High Risk (≥140)": "#d62728", "Normal": "#2ca02c"},
+                                    hover_data=["Patient Name", "Diagnosis"],
+                                    title="Hypertension & Cardiovascular Monitoring")
+                fig_bp.add_vline(x=140, line_dash="dash", line_color="red", opacity=0.5)
+                st.plotly_chart(fig_bp, use_container_width=True)
             else:
                 st.write("No vital signs records available for hypertension tracking.")
+                
+        st.markdown("---")
+        
+        # ROW 2: Length of Stay & Time Tracking (Plotly)
+        time_col1, time_col2 = st.columns(2)
+        
+        with time_col1:
+            st.markdown("##### **⏱️ Outpatient Time Spent in Clinic (Hours)**")
+            fig_time = px.box(df, x="Diagnosis", y="Hours in Clinic", points="all",
+                              color="Diagnosis", title="Average Duration per Consultation/Treatment",
+                              hover_data=["Patient Name"])
+            fig_time.update_layout(showlegend=False)
+            st.plotly_chart(fig_time, use_container_width=True)
+            
+        with time_col2:
+            st.markdown("##### **🛏️ Prolonged Admissions Watchlist**")
+            admitted_df = df[df["Days Admitted"] > 0].copy()
+            if not admitted_df.empty:
+                fig_stay = px.bar(admitted_df.sort_values("Days Admitted", ascending=False), 
+                                  x="Patient Name", y="Days Admitted", color="Diagnosis",
+                                  title="Total Days Admitted per Patient", text_auto=True)
+                st.plotly_chart(fig_stay, use_container_width=True)
+            else:
+                st.success("No active or prolonged admissions recorded.")
                 
         st.markdown("---")
         st.subheader("Master Patient Registry Log")
@@ -208,12 +223,18 @@ with tab_entry:
             is_ref = st.checkbox("Escalate as a Referral Outward Case")
             
         st.markdown("---")
-        st.markdown("##### **Workplace Incident & Safety Logging**")
-        inc_col1, inc_col2 = st.columns(2)
         
-        with inc_col1:
+        # NEW ROW: Duration and Incident Tracking
+        dur_col1, dur_col2 = st.columns(2)
+        
+        with dur_col1:
+            st.markdown("##### **Time Tracking**")
+            hrs_spent = st.number_input("Hours Spent in Clinic (Outpatient/Consultation)", min_value=0.0, max_value=24.0, step=0.5, value=0.5)
+            days_spent = st.number_input("Days Admitted (Leave at 0 if not admitted)", min_value=0, max_value=30, step=1, value=0)
+            
+        with dur_col2:
+            st.markdown("##### **Workplace Incident Logging**")
             has_incident = st.checkbox("Is this visit related to a workplace incident/injury?")
-        with inc_col2:
             inc_type = st.selectbox("Incident Severity Classification", ["Minor Injury Case", "Major (LTI)"]) if has_incident else None
             
         notes = st.text_area("Clinical Notes & Observation Assessments", placeholder="Type out detailed patient complaints, treatment plans, or ongoing observation adjustments.")
@@ -237,6 +258,8 @@ with tab_entry:
                     "is_referral": 1 if is_ref else 0,
                     "is_incident": 1 if has_incident else 0,
                     "incident_type": inc_type,
+                    "hours_in_clinic": hrs_spent,
+                    "days_admitted": days_spent,
                     "clinical_notes": notes
                 }
                 save_visit(payload)
