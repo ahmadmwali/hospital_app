@@ -265,25 +265,66 @@ with tab_entry:
                 save_visit(payload)
                 st.success(f"Log Successfully Generated for {p_name}. Database updated instantly.")
                 st.rerun()
-# --- TEMPORARY SEED DATA (Delete after running once) ---
-if st.button("Seed Database with Sample Data"):
-    sample_1 = {
-        "patient_name": "John Doe", "age": 34, "gender": "Male",
-        "systolic_bp": 115, "diastolic_bp": 75, "temperature_c": 38.5, "pulse_rate": 90,
-        "primary_diagnosis": "Malaria", "is_admission": "Short-Day Admission",
-        "is_referral": 0, "is_incident": 0, "incident_type": None,
-        "hours_in_clinic": 4.5, "days_admitted": 0,
-        "clinical_notes": "Patient presented with high fever, chills. RDT positive for Malaria."
-    }
-    sample_2 = {
-        "patient_name": "Jane Smith", "age": 42, "gender": "Female",
-        "systolic_bp": 155, "diastolic_bp": 95, "temperature_c": 36.8, "pulse_rate": 110,
-        "primary_diagnosis": "Musculoskeletal Pain / Trauma", "is_admission": "Standard Admission",
-        "is_referral": 1, "is_incident": 1, "incident_type": "Major (LTI)",
-        "hours_in_clinic": 2.0, "days_admitted": 2,
-        "clinical_notes": "Slip and fall in loading bay. Suspected minor fracture in right forearm. Referred."
-    }
+import random
+
+if st.button("Seed Database with 20 Sample Records"):
+    names = [
+        "Chuka Obi", "Amina Bello", "Emeka Uba", "Sarah Johnson", "Michael Eze", 
+        "Fatima Aliyu", "David Smith", "Ngozi Okafor", "Tunde Bakare", "John Doe", 
+        "Jane Smith", "Musa Ibrahim", "Grace Nwachukwu", "Peter Ojo", "Aisha Yusuf", 
+        "Samuel Kalu", "Chidinma Nwosu", "Oluwaseun Adeyemi", "Kabir Danladi", "Victoria Coker"
+    ]
     
-    save_visit(sample_1)
-    save_visit(sample_2)
-    st.success("Sample data injected! Please refresh the page.")
+    diagnoses = [
+        "Malaria", "Hypertension (Elevated BP)", "Peptic Ulcer Disease (PUD)", 
+        "Typhoid Fever", "Upper Respiratory Tract Infection (URTI)", 
+        "Musculoskeletal Pain / Trauma", "Skin Infection", "Other Operational/Routine Encounter"
+    ]
+    
+    for name in names:
+        # Determine if it's a workplace incident (20% chance)
+        is_incident = 1 if random.random() < 0.2 else 0
+        inc_type = random.choice(["Minor Injury Case", "Major (LTI)"]) if is_incident else None
+        
+        # Pick a diagnosis (bias trauma if it's an incident)
+        dx = "Musculoskeletal Pain / Trauma" if is_incident else random.choice(diagnoses)
+        
+        # Make vitals medically realistic based on diagnosis
+        if dx == "Hypertension (Elevated BP)":
+            sys_bp = random.randint(140, 185)
+            dia_bp = random.randint(90, 115)
+        else:
+            sys_bp = random.randint(100, 135)
+            dia_bp = random.randint(60, 85)
+            
+        temp = round(random.uniform(38.0, 39.8), 1) if dx in ["Malaria", "Typhoid Fever"] else round(random.uniform(36.1, 37.3), 1)
+        
+        # Determine admissions
+        if random.random() < 0.25:  # 25% admission rate
+            admission = random.choice(["Short-Day Admission", "Standard Admission"])
+            days = random.randint(1, 5) if admission == "Standard Admission" else 0
+        else:
+            admission = "No Entry"
+            days = 0
+            
+        payload = {
+            "patient_name": name,
+            "age": random.randint(22, 60),
+            "gender": random.choice(["Male", "Female"]),
+            "systolic_bp": sys_bp,
+            "diastolic_bp": dia_bp,
+            "temperature_c": temp,
+            "pulse_rate": random.randint(65, 110),
+            "primary_diagnosis": dx,
+            "is_admission": admission,
+            "is_referral": 1 if random.random() < 0.1 else 0, # 10% referral rate
+            "is_incident": is_incident,
+            "incident_type": inc_type,
+            "hours_in_clinic": round(random.uniform(0.5, 5.0), 1),
+            "days_admitted": days,
+            "clinical_notes": f"Sample generated record for {dx}." if not is_incident else f"Incident report: {inc_type}. Monitoring applied."
+        }
+        
+        save_visit(payload)
+        
+    st.success("20 robust sample records successfully injected! Please refresh the page to see your dashboard light up.")
