@@ -265,3 +265,25 @@ with tab_entry:
                 save_visit(payload)
                 st.success(f"Log Successfully Generated for {p_name}. Database updated instantly.")
                 st.rerun()
+        # --- TEMPORARY SEED DATA (Delete after running once) ---
+        if st.button("Seed Database with Sample Data"):
+            sample_1 = {
+                "patient_name": "John Doe", "age": 34, "gender": "Male",
+                "systolic_bp": 115, "diastolic_bp": 75, "temperature_c": 38.5, "pulse_rate": 90,
+                "primary_diagnosis": "Malaria", "is_admission": "Short-Day Admission",
+                "is_referral": 0, "is_incident": 0, "incident_type": None,
+                "hours_in_clinic": 4.5, "days_admitted": 0,
+                "clinical_notes": "Patient presented with high fever, chills. RDT positive for Malaria."
+            }
+            sample_2 = {
+                "patient_name": "Jane Smith", "age": 42, "gender": "Female",
+                "systolic_bp": 155, "diastolic_bp": 95, "temperature_c": 36.8, "pulse_rate": 110,
+                "primary_diagnosis": "Musculoskeletal Pain / Trauma", "is_admission": "Standard Admission",
+                "is_referral": 1, "is_incident": 1, "incident_type": "Major (LTI)",
+                "hours_in_clinic": 2.0, "days_admitted": 2,
+                "clinical_notes": "Slip and fall in loading bay. Suspected minor fracture in right forearm. Referred."
+            }
+            
+            save_visit(sample_1)
+            save_visit(sample_2)
+            st.success("Sample data injected! Please refresh the page.")
